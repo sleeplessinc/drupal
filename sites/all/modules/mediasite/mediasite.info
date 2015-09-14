@@ -1,0 +1,12 @@
+name = Mediasite
+description = Mediasite External Data Access Service (EDAS).
+package = Mediasite
+core = 6.x
+version = "6.x-1.0"
+project = "Mediasite"
+; Information added by drupal.org packaging script on 2013-10-01
+version = "6.x-1.x-dev"
+core = "6.x"
+project = "mediasite"
+datestamp = "1380586137"
+

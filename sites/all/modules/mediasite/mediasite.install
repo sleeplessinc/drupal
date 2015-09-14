@@ -1,0 +1,29 @@
+<?php
+
+/**
+ * @file
+ * Install hooks for Mediasite.
+ */
+ 
+/**
+ * Implementation of hook_requirements().
+ */
+function mediasite_requirements($phase) {
+  $requirements = array();
+  
+  if ($phase == 'runtime') {
+    // Check cURL library.
+    $requirements['soap']['title'] = t('SOAP extension');
+    if (class_exists('SoapClient')) {
+      $requirements['soap']['severity'] = REQUIREMENT_OK;
+      $requirements['soap']['value'] = t('Enabled');
+    }
+    else {
+      $requirements['soap']['severity'] = REQUIREMENT_ERROR;
+      $requirements['soap']['value'] = t('Disabled');
+      $requirements['soap']['description'] = t('The SOAP extension for PHP is disabled. Please check the <a href="@url">PHP SOAP documentation</a> for information on how to correct this.', array('@url' => 'http://www.php.net/manual/en/soap.setup.php'));
+    }
+  }
+  
+  return $requirements;
+}

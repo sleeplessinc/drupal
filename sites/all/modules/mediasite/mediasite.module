@@ -1,0 +1,922 @@
+<?php
+
+/**
+ * @file
+ * Mediasite External Data Access Service (EDAS) primary functionality.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function mediasite_menu() {
+  $items['admin/settings/mediasite'] = array(
+    'title' => 'Mediasite',
+    'description' => 'Settings for Mediasite.',
+    'access arguments' => array('administer mediasite'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('mediasite_admin_settings_form'),
+    'file' => 'mediasite.admin.inc',
+  );
+  
+  $items['mediasite-create-presentation'] = array(
+    'access arguments' => array('administer mediasite'),
+    'page callback' => 'mediasite_create_presentation',
+    'type' => MENU_CALLBACK,
+  );
+  
+  $items['mediasite-find-presentation'] = array(
+    'access arguments' => array('administer mediasite'),
+    'page callback' => 'mediasite_find_presentation',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['mediasite-get-auth-ticket'] = array(
+    'access arguments' => array('access content'),
+    'page callback' => 'mediasite_get_auth_ticket',
+    'type' => MENU_CALLBACK,
+  );
+  
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function mediasite_perm() {
+  return array(
+    'administer mediasite',
+  );
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+/*
+function mediasite_form_alter(&$form, &$form_state, $form_id) {
+  if (FALSE && strpos($form_id, '_node_form') > 0 && user_access('administer mediasite')) {
+    // check that they have access to a format with this capability
+    $mediasite_enabled = FALSE;
+    $formats = filter_formats();
+    if (!empty($formats)) {
+      foreach ($formats as $format) {
+        $filters = filter_list_format($format->format);
+        if (!empty($filters)) {
+          foreach ($filters as $filter) {
+            if ($filter->module == 'mediasite') {
+              $mediasite_enabled = TRUE;
+              break;
+            }
+          }
+        }
+        
+        if ($mediasite_enabled) {
+          break;
+        }
+      }
+    }
+    if (!$mediasite_enabled) {
+      return;
+    }
+  
+    // add buttons to body fields
+    if (!empty($form['body_field']['format'])) {
+      $form['#cache'] = TRUE;
+    
+      $form['body_field']['mediasite_find'] = array(
+        '#type' => 'fieldset',
+        '#tree' => TRUE,
+        '#title' => 'Find Presentation',
+        '#collapsible' => TRUE,
+        '#collapsed' => TRUE,
+        '#weight' => 99,
+        '#attributes' => array(
+          'class' => 'body-mediasite-find',
+        ),
+      );
+      $form['body_field']['mediasite_find']['parent'] = array(
+        '#type' => 'hidden',
+        '#value' => 'body_field][mediasite_find',
+      );
+      _mediasite_find_presentation_form($form['body_field']['mediasite_find']);
+      
+      $form['body_field']['mediasite_add'] = array(
+        '#type' => 'fieldset',
+        '#tree' => TRUE,
+        '#title' => 'Create Presentation',
+        '#collapsible' => TRUE,
+        '#collapsed' => TRUE,
+        '#weight' => 100,
+        '#attributes' => array(
+          'class' => 'body-mediasite-add',
+        ),
+      );
+      $form['body_field']['mediasite_add']['parent'] = array(
+        '#type' => 'hidden',
+        '#value' => 'body_field][mediasite_add',
+      );
+      _mediasite_create_presentation_form($form['body_field']['mediasite_add']);
+    }
+    
+    // add to cck fields
+    if (!empty($form['#field_info'])) {
+      foreach ($form['#field_info'] as $field) {
+        if (!empty($field['text_processing'])) {
+          $form['#cache'] = TRUE;
+        
+          foreach (element_children($form[$field['field_name']]) as $delta) {
+            $form[$field['field_name']][$delta]['mediasite_find'] = array(
+              '#type' => 'fieldset',
+              '#tree' => TRUE,
+              '#title' => 'Find Presentation',
+              '#collapsible' => TRUE,
+              '#collapsed' => TRUE,
+              '#weight' => 99,
+              '#attributes' => array(
+                'class' => $field['field_name'] . '-' . $delta . '-mediasite-find',
+              ),
+            );
+            $form[$field['field_name']][$delta]['mediasite_find']['parent'] = array(
+              '#type' => 'hidden',
+              '#value' => $field['field_name'] . '][' . $delta . '][mediasite_find',
+            );
+            _mediasite_find_presentation_form($form[$field['field_name']][$delta]['mediasite_find']);
+            
+            $form[$field['field_name']][$delta]['mediasite_add'] = array(
+              '#type' => 'fieldset',
+              '#tree' => TRUE,
+              '#title' => 'Create Presentation',
+              '#collapsible' => TRUE,
+              '#collapsed' => TRUE,
+              '#weight' => 100,
+              '#attributes' => array(
+                'class' => $field['field_name'] . '-' . $delta . '-mediasite-add',
+              ),
+            );
+            $form[$field['field_name']][$delta]['mediasite_add']['parent'] = array(
+              '#type' => 'hidden',
+              '#value' => $field['field_name'] . '][' . $delta . '][mediasite_add',
+            );
+            _mediasite_create_presentation_form($form[$field['field_name']][$delta]['mediasite_add']);
+          }
+        }
+      }
+    }
+  }
+}
+*/
+
+/**
+ * Implementation of hook_theme().
+ */
+function mediasite_theme() {
+  return array(
+    'mediasite_embed' => array(
+      'arguments' => array(
+        'options' => NULL,
+      ),
+      'file' => 'mediasite.theme.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_filter_tips().
+ */
+function mediasite_filter_tips($delta, $format, $long = FALSE) {
+  if ($long) {
+    return t('You may use [mediasite id="xxx"] to display Mediasite presentations.');
+  }
+  else {
+    return t('You may use [mediasite id="xxx"] to display Mediasite presentations.');
+  }
+}
+
+/**
+ * Implementation of hook_filter().
+ */
+function mediasite_filter($op, $delta = 0, $format = -1, $text = '', $cache_id = 0) {
+  switch ($op) {
+    case 'list':
+      return array(0 => t('Mediasite filter'));
+      
+    case 'no cache':
+      return TRUE;
+      
+    case 'description':
+      return t('Substitutes [mediasite id="xxx"] with embedding code.');
+      
+    case 'process':
+      return _mediasite_filter_process_text($text);
+      
+    default:
+      return $text;
+  }
+}
+
+/**
+ * Processes text obtained from the input filter.
+ * 
+ * This function processes the filter text that the user has added to the text area.
+ * If the filter is wrapped in <p></p> then these are stripped as part of the processing
+ * This eliminates a validation error in the resulting mark up if Mediasite filter is
+ * being used in conjunction with other HTML filters that correct line breaks.
+ * It won't work in EVERY case, but it will work in MOST cases.
+ * Filters that are embedded in-line with text will continue to fail validation.
+ */
+function _mediasite_filter_process_text($text) {
+  if (preg_match_all('@(?:<p>)?\[(mediasite)\s*(.*?)\](?:</p>)?@s', $text, $match)) {
+    // $match[0][#] .... fully matched string [mediasite parm_0="value_0" parm_1="value_1" parm_2="value_2"]
+    // $match[1][#] .... matched tag type ( mediasite )
+    // $match[2][#] .... full params string until the closing ']'
+    
+    $match_vars = array();
+    foreach ($match[2] as $key => $passed_parameters) {
+      preg_match_all('/(\w*)=(?:\"|&quot;)(.*?)(?:\"|&quot;)/', $passed_parameters, $match_vars[$key]);
+      // $match_vars[0][#] .... fully matched string
+      // $match_vars[1][#] .... matched parameter, eg id, width, height
+      // $match_vars[2][#] .... value after the '='
+      
+      // Process the parameters onto the $options array.
+      foreach ($match_vars[$key][1] as $vars_key => $vars_name) {
+        $options[$vars_name] = $match_vars[$key][2][$vars_key];
+      }
+      
+      // Process the filter
+      $matched[] = $match[0][$key];
+      $rewrite[] = theme('mediasite_embed', $options);
+    }
+    
+    return str_replace($matched, $rewrite, $text);
+  }
+  
+  return $text;
+}
+
+/**
+ * Find Presentation form creator.
+ */
+/*
+function _mediasite_find_presentation_form(&$form) {
+  $form['wrapper'] = array(
+    '#prefix' => '<div id="' . $form['#attributes']['class'] . '">',
+    '#suffix' => '</div>',
+  );
+
+  // Title
+  $form['wrapper']['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#maxlength' => 255,
+  );
+  
+  // Folder
+  $form['wrapper']['folder'] = array(
+    '#type' => 'select',
+    '#title' => t('Folder'),
+    '#options' => array(),
+  );
+  $folders = mediasite_folder_list();
+  if (!empty($folders)) {
+    foreach ($folders as $folder) {
+      $form['wrapper']['folder']['#options'][$folder->Id] = $folder->Name;
+    }
+  }
+  
+  // Find Presentation AHAH
+  $form['wrapper']['create'] = array(
+    '#type' => 'submit',
+    '#value' => t('Find Presentations'),
+    '#ahah' => array(
+      'event' => 'click',
+      'path' => 'mediasite-find-presentation',
+      'wrapper' => $form['#attributes']['class'],
+      'method' => 'replace',
+    ),
+  );
+}
+*/
+
+/**
+ * Create Presentation form creator.
+ */
+/*
+function _mediasite_create_presentation_form(&$form) {
+  $form['wrapper'] = array(
+    '#prefix' => '<div id="' . $form['#attributes']['class'] . '">',
+    '#suffix' => '</div>',
+  );
+
+  // Title
+  $form['wrapper']['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#maxlength' => 255,
+  );
+  
+/*
+  // Player
+  $form['wrapper']['player'] = array(
+    '#type' => 'select',
+    '#title' => t('Player'),
+    '#options' => array(),
+  );
+  $players = mediasite_player_list();
+  if (!empty($players)) {
+    foreach ($players as $player) {
+      $form['wrapper']['player']['#options'][$player->Id] = $player->Name;
+    }
+  }
+/
+  
+  // Folder
+  $form['wrapper']['folder'] = array(
+    '#type' => 'select',
+    '#title' => t('Folder'),
+    '#options' => array(),
+  );
+  $folders = mediasite_folder_list();
+  if (!empty($folders)) {
+    foreach ($folders as $folder) {
+      $form['wrapper']['folder']['#options'][$folder->Id] = $folder->Name;
+    }
+  }
+  
+/*
+  // Presenter
+  $form['wrapper']['presenter'] = array(
+    '#type' => 'select',
+    '#title' => t('Presenter'),
+    '#options' => array(),
+  );
+  $presenters = mediasite_presenter_list();
+  if (!empty($presenters)) {
+    foreach ($presenters as $presenter) {
+      $form['wrapper']['presenter']['#options'][$presenter->Id] = $presenter->Name;
+    }
+  }
+/
+  
+  // Template
+  $form['wrapper']['template'] = array(
+    '#type' => 'select',
+    '#title' => t('Template'),
+    '#options' => array(),
+  );
+  $templates = mediasite_template_list();
+  if (!empty($templates)) {
+    foreach ($templates as $template) {
+      $form['wrapper']['template']['#options'][$template->Id] = $template->Name;
+    }
+  }
+  
+  // Create Presentation AHAH
+  $form['wrapper']['create'] = array(
+    '#type' => 'submit',
+    '#value' => t('Create Presentation'),
+    '#ahah' => array(
+      'event' => 'click',
+      'path' => 'mediasite-create-presentation',
+      'wrapper' => $form['#attributes']['class'],
+      'method' => 'replace',
+    ),
+  );
+}
+*/
+
+/**
+ * Find presentation.
+ */
+function mediasite_find_presentation() {
+  include_once 'modules/node/node.pages.inc';
+  
+  // get form
+  $form_state = array('storage' => NULL, 'submitted' => FALSE);
+  $form_build_id = $_POST['form_build_id'];
+  $form = form_get_cache($form_build_id, $form_state);
+  $args = $form['#parameters'];
+  $form_id = array_shift($args);
+  $form_state['post'] = $form['#post'] = $_POST;
+  $form['#programmed'] = $form['#redirect'] = FALSE;
+  $parent = $form_state['post']['mediasite_find']['parent'];
+  $parent_elements = explode('][', $parent);
+
+  // find presentation
+  $header = array(
+    'Name',
+    'Embed Code',
+  );
+  $rows = array();
+
+  $filter = array(
+    'title' => $form_state['post']['mediasite_find']['wrapper']['title'],
+    'folder' => $form_state['post']['mediasite_find']['wrapper']['folder'],
+  );
+  try {
+    $presentations = mediasite_presentation_list($filter);
+    foreach ($presentations as $presentation) {
+      $embed_code = '[mediasite id="' . str_replace('-', '', $presentation->Id) . '1d"';
+      $embed_code .= ' viewerid="' . str_replace('-', '', $presentation->PlayerId) . '"';
+/*
+      $embed_code .= ' width="' . $presentation->Width . '"';
+      $embed_code .= ' height="' . $presentation->Height . '"';
+*/
+      $embed_code .= ' autostart="false"]';
+    
+      $row = array();
+      $row[] = $presentation->Name;
+      $row[] = $embed_code;
+      
+      $rows[] = $row;
+    }
+  }
+  catch (SoapFault $exception) {
+    $rows[] = array('error', print_r($exception, true));
+  }
+  
+  // build output
+  $form = drupal_rebuild_form($form_id, $form_state, $args, $form_build_id);
+  $subform = $form;
+  if (!empty($parent_elements)) {
+    foreach ($parent_elements as $parent_element) {
+      $subform = $subform[$parent_element];
+    }
+  }
+  $subform = $subform['wrapper'];
+  unset($subform['#prefix'], $subform['#suffix']);
+  $output = drupal_render($subform) . theme('table', $header, $rows);
+  drupal_json(array('status' => TRUE, 'data' => $output));
+}
+
+/**
+ * Create presentation.
+ */
+function mediasite_create_presentation() {
+  include_once 'modules/node/node.pages.inc';
+  
+  // get form
+  $form_state = array('storage' => NULL, 'submitted' => FALSE);
+  $form_build_id = $_POST['form_build_id'];
+  $form = form_get_cache($form_build_id, $form_state);
+  $args = $form['#parameters'];
+  $form_id = array_shift($args);
+  $form_state['post'] = $form['#post'] = $_POST;
+  $form['#programmed'] = $form['#redirect'] = FALSE;
+  $parent = $form_state['post']['mediasite_add']['parent'];
+  $parent_elements = explode('][', $parent);
+
+  // create presentation
+  $header = array(
+    'Name',
+    'Embed Code',
+  );
+  $rows = array();
+  
+/*
+  $presentation_details = new stdClass();
+  $presentation_details->Title = $form_state['post']['mediasite_add']['wrapper']['title'];
+  $presentation_details->FolderId = $form_state['post']['mediasite_add']['wrapper']['folder'];
+  $presentation_details->PlayerId = $form_state['post']['mediasite_add']['wrapper']['player'];
+  $presentation_details->RecordDateTime = date('c');
+  $presentation_details->Duration = 0;
+  $presentation_details->LiveBroadcast = 0;
+  $presentation_details->UseQAForum = 0;
+  $presentation_details->AllowViewingPollResults = 0;
+  $presentation_details->AllowPollSubmissions = 0;
+  $presentation_details->AutomaticViewableStatus = 0;
+  $presentation_details->AutomaticUpload = 0;
+  $presentation_details->LiveBroadcast = 0;
+  $presentation_details->MediaEncodeProfileId = $form_state['post']['mediasite_add']['wrapper']['player'];
+  $presentation_details->DataStatus = 'Scheduled';
+  $presentation_details->PresenterIdList = array(
+    $form_state['post']['mediasite_add']['wrapper']['presenter'],
+  );
+*/
+  
+  $presentation_details = new stdClass();
+  $presentation_details->PresentationTemplateId = $form_state['post']['mediasite_add']['wrapper']['template'];
+  $presentation_details->Title = $form_state['post']['mediasite_add']['wrapper']['title'];
+  $presentation_details->RecordDateTime = date('c');
+  $presentation_details->Duration = 0;
+  $presentation_details->FolderId = $form_state['post']['mediasite_add']['wrapper']['folder'];
+  $presentation_details->DataStatus = 'Scheduled';
+  
+  $presentation_request = new stdClass();
+  $presentation_request->CreationDetails = $presentation_details;
+
+  try {
+    $client = mediasite_soap_connection();
+    $user_ticket = mediasite_user_ticket();
+    if (empty($user_ticket)) {
+      return '';
+    }
+    $presentation_request->UserTicket = $user_ticket;
+    
+    $response = $client->CreatePresentationFromTemplate($presentation_request);
+    $presentation = $response->Presentation;
+    $embed_code = '[mediasite id="' . str_replace('-', '', $presentation->Id) . '1d" autostart="false"]';
+  
+    $row = array();
+    $row[] = $presentation->Name;
+    $row[] = $embed_code;
+    
+    $rows[] = $row;
+  }
+  catch (SoapFault $exception) {
+    $rows[] = array('error', print_r($exception, true));
+  }
+  
+  // build output
+  $form = drupal_rebuild_form($form_id, $form_state, $args, $form_build_id);
+  $subform = $form;
+  if (!empty($parent_elements)) {
+    foreach ($parent_elements as $parent_element) {
+      $subform = $subform[$parent_element];
+    }
+  }
+  $subform = $subform['wrapper'];
+  unset($subform['#prefix'], $subform['#suffix']);
+  $output =  theme('table', $header, $rows) . drupal_render($subform);
+  drupal_json(array('status' => TRUE, 'data' => $output));
+}
+
+/**
+ * Get Folder list.
+ */
+function mediasite_folder_list() {
+  static $folder_list;
+
+  if (!empty($folder_list)) {
+    return $folder_list;
+  }
+  
+  $client = mediasite_soap_connection();
+  $user_ticket = mediasite_user_ticket();
+  if (empty($user_ticket)) {
+    return array();
+  }
+  
+  // get presentations
+  $folder_request = new stdClass();
+  $folder_request->UserTicket = $user_ticket;
+  try {
+    $response = $client->QueryFoldersWithPresentations($folder_request);
+  }
+  catch (SoapFault $exception) {
+    return array();
+  }
+  
+  if (is_array($response->Folders->FolderDetails)) {
+    foreach ($response->Folders->FolderDetails as $folder) {
+      $folder_list[] = $folder;
+    }
+  }
+  else {
+    $folder_list[] = $response->Folders->FolderDetails;
+  }
+  
+  return $folder_list;
+}
+
+/**
+ * Get Template list.
+ */
+function mediasite_template_list() {
+  static $template_list;
+
+  if (!empty($template_list)) {
+    return $template_list;
+  }
+  
+  $client = mediasite_soap_connection();
+  $user_ticket = mediasite_user_ticket();
+  if (empty($user_ticket)) {
+    return array();
+  }
+  
+  // get presentations
+  $template_request = new stdClass();
+  $template_request->UserTicket = $user_ticket;
+  try {
+    $response = $client->queryPresentationTemplates($template_request);
+  }
+  catch (SoapFault $exception) {
+    return array();
+  }
+  
+  if (is_array($response->Templates->PresentationTemplateContext)) {
+    foreach ($response->Templates->PresentationTemplateContext as $template) {
+      $template_list[] = $template;
+    }
+  }
+  else {
+    $template_list[] = $response->Templates->PresentationTemplateContext;
+  }
+  
+  return $template_list;
+}
+
+/**
+ * Get Presenter list.
+ */
+function mediasite_presenter_list() {
+  static $presenter_list;
+
+  if (!empty($presenter_list)) {
+    return $presenter_list;
+  }
+  
+  $client = mediasite_soap_connection();
+  $user_ticket = mediasite_user_ticket();
+  if (empty($user_ticket)) {
+    return array();
+  }
+  
+  // get presentations
+  $presenter_request = new stdClass();
+  $presenter_request->UserTicket = $user_ticket;
+  try {
+    $response = $client->queryPresenters($presenter_request);
+  }
+  catch (SoapFault $exception) {
+    return array();
+  }
+  
+  if (is_array($response->Presenters->PresenterContext)) {
+    foreach ($response->Presenters->PresenterContext as $presenter) {
+      $presenter_list[] = $presenter;
+    }
+  }
+  else {
+    $presenter_list[] = $response->Presenters->PresenterContext;
+  }
+  
+  return $presenter_list;
+}
+
+/**
+ * Get presentation list.
+ */
+function mediasite_presentation_list($filter = array()) {
+  static $presentation_list;
+
+  if (!empty($presentation_list)) {
+    return $presentation_list;
+  }
+  
+  $client = mediasite_soap_connection();
+  $user_ticket = mediasite_user_ticket();
+  if (empty($user_ticket)) {
+    return array();
+  }
+  
+  // get presentations
+  $presentation_request = new stdClass();
+  $presentation_filter = new stdClass();
+  $presentation_filter->StartDate = date('c', 0);
+  $presentation_filter->EndDate = date('c');
+  $presentation_filter->PermissionMask = 'Read';
+  $presentation_filter->FolderMask = 'Normal';
+  $presentation_filter->FieldsToSearch = 'Title';
+  $presentation_filter->SearchType = 'AnyWord';
+  $presentation_filter->SortBy = 'Date';
+  $presentation_filter->SortDirection = 'Descending';
+  
+  if (!empty($filter['folder'])) {
+    $presentation_request->FolderIdList = array($filter['folder']);
+  }
+  if (!empty($filter['title'])) {
+    $presentation_filter->TitleRegEx = $filter['title'];
+  }
+  
+  $presentation_request->UserTicket = $user_ticket;
+  $presentation_request->PresentationFilter = $presentation_filter;
+  
+  try {
+    $response = $client->QueryPresentations($presentation_request);
+  }
+  catch (SoapFault $exception) {
+    return array();
+  }
+  
+  if (is_array($response->Presentations->PresentationContext)) {
+    foreach ($response->Presentations->PresentationContext as $presentation) {
+      $presentation_list[] = mediasite_presentation_details($presentation->Id);
+    }
+  }
+  else {
+    $presentation = $response->Presentations->PresentationContext;
+    $presentation_list[] = mediasite_presentation_details($presentation->Id);
+  }
+  
+  return $presentation_list;
+}
+
+/**
+ * Get presentation details.
+ */
+function mediasite_presentation_details($id) {
+  static $presentations;
+
+  if (!empty($presentations[$id])) {
+    return $presentations[$id];
+  }
+  
+  $client = mediasite_soap_connection();
+  $user_ticket = mediasite_user_ticket();
+  if (empty($user_ticket)) {
+    return array();
+  }
+  
+  // get presentation details
+  $presentation_request = new stdClass();
+  $presentation_request->UserTicket = $user_ticket;
+  $presentation_request->PresentationIdList = array($id);
+
+  $presentation_filter = new stdClass();
+  $presentation_filter->PermissionMask = 'Read';
+  $presentation_filter->IncludeMediaEncodeProfile = FALSE;
+  $presentation_filter->IncludePresenterList = FALSE;
+  $presentation_filter->IncludeSuportingLinks = FALSE;
+  $presentation_filter->IncludeAttachments = TRUE;
+  $presentation_request->Filter = $presentation_filter;
+  try {
+    $response = $client->queryPresentationDetails($presentation_request);
+  }
+  catch (SoapFault $exception) {
+    return array();
+  }
+  $presentations[$id] = $response->Details->PresentationDetails;
+  
+  // get video details
+/*
+  $presentation_request = new stdClass();
+  $presentation_request->UserTicket = $user_ticket;
+  $presentation_request->MediaEncodeProfileIdList = array($response->Details->PresentationDetails->MediaEncodeProfileId);
+  $response = $client->queryMediaEncodeProfileDetails($presentation_request);
+  $presentations[$id]->Width = $response->Details->MediaEncodeProfileDetails->VideoEncodings->VideoEncodingDetails->Width;
+  $presentations[$id]->Height = $response->Details->MediaEncodeProfileDetails->VideoEncodings->VideoEncodingDetails->Height;
+*/
+  
+  return $presentations[$id];
+}
+
+/**
+ * Get player list.
+ */
+function mediasite_player_list() {
+  static $player_list;
+
+  if (!empty($player_list)) {
+    return $player_list;
+  }
+  
+  $client = mediasite_soap_connection();
+  $user_ticket = mediasite_user_ticket();
+  if (empty($user_ticket)) {
+    return FALSE;
+  }
+  
+  // get players
+  $player_request = new stdClass();
+  $player_request->UserTicket = $user_ticket;
+  try {
+    $response = $client->QueryPlayers($player_request);
+  }
+  catch (SoapFault $exception) {
+    return FALSE;
+  }
+  $player_list = $response->Players->PlayerContext;
+  
+  return $player_list;
+}
+
+/**
+ * Get thumbnail image for a resource.
+ */
+function mediasite_thumbnail_image($id) {
+  if (empty($id)) {
+    return FALSE;
+  }
+  
+  $presentation = mediasite_presentation_details($id);
+  
+  $thumbnail = array();
+  $thumbnail['alt'] = $presentation->Name;
+  if (is_array($presentation->AttachmentList->PresentationAttachment)) {
+    foreach ($presentation->AttachmentList->PresentationAttachment as $attachment) {
+      if (!empty($attachment->Type) && $attachment->Type == 'Thumbnail') {
+        $thumbnail['src'] = $attachment->ContentUrl;
+      }
+    }
+  }
+  elseif (!empty($presentation->AttachmentList->PresentationAttachment->Type) && $presentation->AttachmentList->PresentationAttachment->Type == 'Thumbnail') {
+    $thumbnail['src'] = $presentation->AttachmentList->PresentationAttachment->ContentUrl;
+  }
+  
+  return $thumbnail;
+}
+
+/**
+ * Get authentication ticket for a resource.
+ */
+function mediasite_authentication_ticket($resource_id, $user_name) {
+  $ticket_lifetime = variable_get('mediasite_ticket_lifetime', '');
+  
+  if (empty($resource_id) || empty($ticket_lifetime)) {
+    return FALSE;
+  }
+  
+  $client = mediasite_soap_connection();
+  $user_ticket = mediasite_user_ticket();
+  if (empty($user_ticket)) {
+    return FALSE;
+  }
+  
+  // get authentication ticket
+  $settings = new stdClass();
+  $settings->Username = $user_name;
+  $settings->ResourceId = $resource_id;
+  $settings->ClientIpAddress = NULL;
+  $settings->MinutesToLive = $ticket_lifetime;
+  $resource_request = new stdClass();
+  $resource_request->UserTicket = $user_ticket;
+  $resource_request->ImpersonationUsername = NULL;
+  $resource_request->TicketSettings = $settings;
+  
+  try {
+    $response = $client->CreateAuthTicket($resource_request);
+  }
+  catch (SoapFault $exception) {
+    return FALSE;
+  }
+  
+  return $response->AuthTicketId;
+}
+
+/**
+ * Get auth ticket json callback
+ */
+function mediasite_get_auth_ticket() {
+  // turn off caching on our callback
+  $GLOBALS['conf']['cache'] = FALSE;
+  
+  $query = $_GET;
+  unset($query['q']);
+  
+  if ($query['auth'] != 'false') {
+    $auth_ticket = mediasite_authentication_ticket($query['peid'], $query['username']);
+    if ($auth_ticket) {
+      $query['authTicket'] = $auth_ticket;
+    }
+  }
+  
+  $server_root['root'] = $query['mediasite_root'];
+  unset($query['mediasite_root']);
+  $server_root['player'] = $query['mediasite_player'];
+  unset($query['mediasite_player']);
+  
+  drupal_json(array('src' => $server_root['root'] . $server_root['player'] . '?' . http_build_query($query)));
+}
+
+/**
+ * Get user ticket.
+ */
+function mediasite_user_ticket() {
+  static $user_ticket;
+  $mediasite_user = variable_get('mediasite_user', '');
+  $mediasite_password = variable_get('mediasite_password', '');
+
+  if (!empty($user_ticket) || empty($mediasite_user) || empty($mediasite_password)) {
+    return $user_ticket;
+  }
+  
+  $client = mediasite_soap_connection();
+  $login_request = new stdClass();
+  $login_request->Username = $mediasite_user;
+  $login_request->Password = $mediasite_password;
+  try {
+    $response = $client->Login($login_request);
+    $user_ticket = $response->UserTicket;
+  }
+  catch (SoapFault $exception) {
+    return FALSE;
+  }
+  
+  return $user_ticket;
+}
+
+/**
+ * Get soap client.
+ */
+function mediasite_soap_connection() {
+  static $client;
+  $server_root = variable_get('mediasite_server_root', '');
+
+  if (!empty($client) || empty($server_root)) {
+    return $client;
+  }
+  
+  $client = new SoapClient($server_root . '/ExternalDataAccess_5_0/Service.asmx?WSDL');
+  
+  return $client;
+}
